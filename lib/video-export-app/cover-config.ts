@@ -4,6 +4,7 @@ import deDE from '@/lib/i18n/locales/de-DE.json';
 import enUS from '@/lib/i18n/locales/en-US.json';
 import esMX from '@/lib/i18n/locales/es-MX.json';
 import frFR from '@/lib/i18n/locales/fr-FR.json';
+import hiIN from '@/lib/i18n/locales/hi-IN.json';
 import jaJP from '@/lib/i18n/locales/ja-JP.json';
 import koKR from '@/lib/i18n/locales/ko-KR.json';
 import ptBR from '@/lib/i18n/locales/pt-BR.json';
@@ -57,6 +58,7 @@ const LOCALE_RESOURCES: Record<Locale, Record<string, unknown>> = {
   'ru-RU': ruRU,
   'ar-SA': arSA,
   'de-DE': deDE,
+  'hi-IN': hiIN,
 };
 
 /**
