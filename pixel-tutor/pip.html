@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pixel Tutor</title>
+<style>
+:root{--bg:#0d0f14;--panel:#171a22;--ink:#e9ecf4;--mut:#8b93a7;--acc:#2fd0bd}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:18px;padding:24px 16px;
+ background-image:radial-gradient(#1b1f2a 1px,transparent 1px);background-size:22px 22px}
+h1{margin:0;font-size:22px}.sub{color:var(--mut);margin-top:-12px;text-align:center}
+.stage{position:relative;display:flex;align-items:flex-end;justify-content:center;gap:12px;width:100%;max-width:900px}
+canvas{image-rendering:pixelated;width:560px;max-width:66vw;height:auto;aspect-ratio:112/102}
+.bubble{background:#fff;color:#14161d;border-radius:14px;padding:12px 16px;width:260px;min-height:56px;font:600 15px/1.4 system-ui,sans-serif;position:relative;margin-bottom:260px;box-shadow:0 4px 0 #0006}
+.bubble:before{content:"";position:absolute;left:-10px;bottom:18px;border:10px solid transparent;border-right-color:#fff;border-left:0}
+.bar{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:900px}
+button{background:var(--panel);color:var(--ink);border:2px solid #2a2f3d;border-radius:8px;padding:8px 14px;font:600 14px system-ui,sans-serif;cursor:pointer}
+button:hover{border-color:var(--acc)}button.on{background:var(--acc);color:#06201c;border-color:var(--acc)}
+textarea{width:100%;max-width:520px;background:var(--panel);color:var(--ink);border:2px solid #2a2f3d;border-radius:8px;padding:10px;font:inherit}
+.row{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;justify-content:center;width:100%}
+label{color:var(--mut);font-size:13px;display:flex;gap:6px;align-items:center}
+@media(max-width:640px){.stage{flex-direction:column;align-items:center}.bubble{margin:0;order:-1}.bubble:before{display:none}canvas{max-width:92vw}}
+</style></head><body>
+<h1 id="ttl">Pip, the pixel tutor</h1>
+<div class="sub">Pick a pose, or type something and press Speak. Your tutor nods on each word, blinks, looks around and points.</div>
+<div class="stage"><canvas id="cv" width="672" height="612" aria-label="Pip, a pixel-art tutor"></canvas><div class="bubble" id="bub">Hi! I'm Pip. Ask me to explain anything.</div></div>
+<div class="bar" id="chars"></div><div class="bar" id="poses"></div><div class="bar" id="exprs"></div>
+<div class="row"><textarea id="txt" rows="2">Tokens are the small pieces a model reads. Look over here: each piece gets a number.</textarea>
+<button id="speak">Speak</button><button id="tour">Auto tour</button><label><input type="checkbox" id="voice" checked> voice</label></div>
+<script>
+// =====================================================================================
+//  Pip: drawn procedurally on a 112x88 pixel grid (design centre x=48, shifted +8),
+//  then given a sticker outline and scaled 6x with nearest-neighbour filtering.
+// =====================================================================================
+const W=112,H=102,S=6,OX=8,OY=16
+const K={ // colour ramps (hi / base / mid / dark)
+ skin:['#fbdcc0','#f2bf98','#e0a37c','#c4845f'], hair:['#96704f','#5d402b','#40291b','#27180f'],
+ hood:['#52d9c8','#1fb3a2','#168b7e','#0f6358'], pants:['#414b78','#2d3558','#232a47','#1a2038'],
+ frame:'#161622',lens:'#d6f2ff',glare:'#ffffff',iris:'#1b2347',blush:'#ff9a98',mouth:'#4a1b28',tongue:'#ee6a82',teeth:'#ffffff',
+ shoe:'#f7f7fc',shoeM:'#d7d9ec',sole:'#b7bad6',accent:'#ff6f91',bulb:'#ffe066',bulbD:'#e0a800',metal:'#9aa0b8',spark:'#ffe066',streak:'#46e6d3'}
+let CHAR='pip'
+K.tee=['#555b69','#3d424e','#2c303a','#21242c']
+const ORIG={hood:K.hood.slice(),pants:K.pants.slice(),hair:K.hair.slice(),skin:K.skin.slice(),lens:K.lens}
+const CHARS={pip:{},beard:{skin:['#eebd8c','#e0a674','#c88a58','#a86d42'],pants:['#3a3e50','#2a2e3e','#202333','#161829'],hair:['#6e4d35','#4a3222','#2e1d12','#1c110a']}}
+const spr=document.createElement('canvas');spr.width=W;spr.height=H;const g=spr.getContext('2d')
+const out=document.createElement('canvas');out.width=W;out.height=H;const o=out.getContext('2d')
+const blkS=document.createElement('canvas');blkS.width=W;blkS.height=H;const bk=blkS.getContext('2d')
+const blkU=document.createElement('canvas');blkU.width=W;blkU.height=H;const bu=blkU.getContext('2d')
+const sil=document.createElement('canvas');sil.width=W;sil.height=H;const k2=sil.getContext('2d')
+const cv=document.getElementById('cv'),c=cv.getContext('2d');c.imageSmoothingEnabled=false
+const ix=Math.round
+const R=(x,y,w,h,col)=>{g.fillStyle=col;g.fillRect(ix(x)+OX,ix(y)+OY,w,h)}
+function rr(x,y,w,h,r,col){for(let dy=0;dy<h;dy++){const d=Math.min(dy,h-1-dy);const inset=d>=r?0:r-Math.round(Math.sqrt(r*r-(r-d)*(r-d)));R(x+inset,y+dy,w-2*inset,1,col)}}
+function el(cx,cy,rx,ry,col){for(let dy=-ry;dy<=ry;dy++){const w=Math.round(rx*Math.sqrt(1-(dy*dy)/(ry*ry+.01)));R(cx-w,cy+dy,2*w+1,1,col)}}
+function line(x0,y0,x1,y1,t,col){x0=ix(x0);y0=ix(y0);x1=ix(x1);y1=ix(y1);const dx=Math.abs(x1-x0),dy=-Math.abs(y1-y0),sx=x0<x1?1:-1,sy=y0<y1?1:-1;let e=dx+dy
+ for(;;){R(x0-(t>>1),y0-(t>>1),t,t,col);if(x0==x1&&y0==y1)break;const e2=2*e;if(e2>=dy){e+=dy;x0+=sx}if(e2<=dx){e+=dx;y0+=sy}}}
+// two-bone arm: returns the elbow so the hand reaches the target
+function ik(sx,sy,tx,ty,l1,l2,bend){let dx=tx-sx,dy=ty-sy,d=Math.hypot(dx,dy)||1;const m=l1+l2-.5;if(d>m){tx=sx+dx/d*m;ty=sy+dy/d*m;dx=tx-sx;dy=ty-sy;d=m}
+ const a=(l1*l1-l2*l2+d*d)/(2*d),h=Math.sqrt(Math.max(0,l1*l1-a*a)),ux=dx/d,uy=dy/d
+ return{ex:sx+ux*a+(-uy)*h*bend,ey:sy+uy*a+ux*h*bend,hx:tx,hy:ty,ux,uy}}
+// ---- hands: small sprites drawn along the forearm direction (x = fingers, -y = thumb side) ----
+const HAND={
+ open:{m:3,r:["..ooo....",".oooo....","oooooooo.","ooooooooo","oooooooo.","oooooo...",".dddd...."]},
+ point:{m:3,r:["..ooo.....",".oooo.....","oooooooool","oooood....","ooodd.....",".ddd......"]},
+ fist:{m:2,r:[".oooo.","oooooo","ooldoo","oooooo",".dddd."]},
+ thumb:{m:5,r:["..ol..","..oo..","..oo..",".oooo.","oooooo","ooldoo","oooooo",".dddd."]},
+ relaxed:{m:2,r:[".ooo..","oooooo","oooood","ooodd.",".dd..."]},
+}
+function blit(sp,ox,oy,ux,uy,flip){const A=Math.round(Math.atan2(uy,ux)/(Math.PI/4))*(Math.PI/4),c=Math.cos(A),sn=Math.sin(A),[s0,s1,s2,s3]=K.skin,col={o:s1,l:s0,d:s2,k:s3}
+ for(let Y=-12;Y<=12;Y++)for(let X=-12;X<=12;X++){const lx=Math.round(X*c+Y*sn),ly0=Math.round(-X*sn+Y*c),ly=flip?-ly0:ly0,row=sp.r[ly+sp.m];if(!row||lx<0)continue;const ch=row[lx];if(ch&&ch!='.')R(Math.round(ox)+X-OX+OX,Math.round(oy)+Y,1,1,col[ch])}}
+function arm(sx,sy,t,bend,st,eo){const sx0=sx,cl=(v)=>Math.max(0,Math.min(1,v)),w=cl((t[1]-sy-12)/6)*cl((18-Math.abs(t[0]-sx))/4),out=(sx<48?-1:1)*5.5*w   // 0 when the arm is raised, 1 when it hangs
+ sx+=out;t=[t[0]+out,t[1]];if(eo)eo=[eo[0]+out,eo[1]];let a;if(eo){const dx=t[0]-eo[0],dy=t[1]-eo[1],d=Math.hypot(dx,dy)||1;a={ex:eo[0],ey:eo[1],hx:t[0],hy:t[1],ux:dx/d,uy:dy/d}}else a=ik(sx,sy,t[0],t[1],11,11,bend);const [hi,base,mid,dk]=K.hood
+ line(sx+1,sy+1,a.ex+1,a.ey+1,5,dk);line(a.ex+1,a.ey+1,a.hx,a.hy,5,dk)
+ line(sx,sy,a.ex,a.ey,5,base);line(a.ex,a.ey,a.hx,a.hy,5,base)
+ line(sx-1,sy-1,a.ex-1,a.ey-1,1,hi);line(a.ex-1,a.ey-1,a.hx-1,a.hy-1,1,hi)
+ el(a.ex,a.ey,2,2,mid) // elbow fold
+ const cx=a.hx-a.ux*2,cy=a.hy-a.uy*2,px=a.hx+a.ux,py=a.hy+a.uy;el(cx,cy,3,3,mid);el(cx,cy,2,2,dk) // cuff
+ const wx=a.hx-a.ux,wy=a.hy-a.uy   // wrist
+ const flip=(a.uy*(sx0<48?-1:1)+(-a.ux)*(-.6))<0   // thumb faces outward / upward
+ if(st=='marker'){blit(HAND.fist,wx,wy,a.ux,a.uy,flip);const mx=wx+a.ux*3,my=wy+a.uy*3;line(mx,my,mx+a.ux*9,my+a.uy*9,2,K.accent);R(mx+a.ux*9,my+a.uy*9,2,2,K.frame)}
+ else if(st=='thumb')blit(HAND.thumb,wx,wy,1,0,false)
+ else blit(HAND[st==='flat'?'open':(st||'relaxed')]||HAND.relaxed,wx,wy,a.ux,a.uy,flip)
+ return a}
+const GLYPH={'?':['0110','1001','0001','0010','0100','0000','0100'],'!':['1','1','1','1','1','0','1']}
+function glyph(ch,x,y,col){GLYPH[ch].forEach((row,j)=>[...row].forEach((b,i)=>b=='1'&&R(x+i*2,y+j*2,2,2,col)))}
+function sparkle(x,y,s,col){R(x,y-s,1,2*s+1,col);R(x-s,y,2*s+1,1,col)}
+
+function figure(s){
+ if(CHAR=='beard')return figureBen(s)
+ g.clearRect(0,0,W,H)
+ const jb=s.jump, b=s.bob-jb, hd=b+s.headDy, hr=hd+s.hairDy, tx=s.tilt
+ // ---- legs and shoes
+ const lk=jb>1?-1:0
+ for(const x of[37,51]){R(x,70+b,9,9+lk,K.pants[1]);R(x,70+b,3,9+lk,K.pants[2]);R(x+7,70+b,2,9+lk,K.pants[0]);R(x,70+b,9,1,K.pants[3])
+  rr(x-2,78-jb,13,6,2,K.shoe);R(x-2,82-jb,13,2,K.sole);R(x-2,81-jb,13,1,K.shoeM);R(x+6,79-jb,3,1,K.accent);R(x+1,78-jb,3,1,K.shoeM)}
+ // ---- arms behind the head
+ const armsFront=s.armsFront
+ let fa=null;const drawArms=()=>{if(s.rear)arm(37,52+b+s.sh,s.rear,s.rearBend??-1,s.rStyle,s.rElbow);if(s.front)fa=arm(59,52+b+s.sh,s.front,s.frontBend??1,s.fStyle,s.fElbow)}
+ // hood bunched behind neck
+ rr(37,44+hd,22,8,4,K.hood[2]);
+ // ---- torso hoodie
+ rr(36,47+b,24,25,5,K.hood[1]);R(36,50+b,3,20,K.hood[2]);R(57,50+b,3,20,K.hood[2]);R(38,50+b,2,18,K.hood[0]);R(36,69+b,24,3,K.hood[2]);R(37,70+b,22,1,K.hood[3])
+ R(41,57+b,14,8,K.hood[2]);R(42,58+b,12,6,K.hood[1]);R(41,57+b,14,1,K.hood[3]);R(44,57+b,1,8,K.hood[2]) // pocket
+ R(44,50+b,8,3,K.hood[3]);R(45,53+b,1,7,'#e9fffb');R(50,53+b,1,7,'#e9fffb');R(45,60+b,1,1,K.metal);R(50,60+b,1,1,K.metal)
+ if(!armsFront)drawArms()
+ // ---- neck
+ R(43,44+b,10,4,K.skin[2]);R(43,44+b,10,2,K.skin[3])
+ // ---- head
+ const hx=tx
+ rr(30+hx,10+hd,36,36,12,K.skin[1]);R(32+hx,12+hd,1,1,K.skin[0])
+ rr(30+hx,38+hd,36,8,4,K.skin[1]);R(32+hx,43+hd,32,2,K.skin[2]);R(34+hx,45+hd,28,1,K.skin[3]) // jaw shade
+ R(30+hx,22+hd,2,10,K.skin[1]);R(64+hx,22+hd,2,10,K.skin[1])
+ el(29+hx,30+hd,2,3,K.skin[1]);el(67+hx,30+hd,2,3,K.skin[2]);R(28+hx,30+hd,1,2,K.skin[3]);R(67+hx,30+hd,1,2,K.skin[3]) // ears
+
+
+ // hair: natural short cut, dark brown, side part with soft swept bangs
+ const hh=hr, H1=K.hair[1],H0=K.hair[0],H2=K.hair[2],H3=K.hair[3]
+ rr(29+hx,3+hh,38,16,7,H1);rr(28+hx,8+hh,40,14,7,H1)                               // crown and volume
+ R(28+hx,14+hh,4,13,H1);R(64+hx,14+hh,4,13,H1);R(28+hx,22+hh,3,5,H2);R(65+hx,22+hh,3,5,H2) // sideburns
+ for(let x=30;x<=65;x++){const yb=x<38?18-((x*7)%3==0?1:0):19+Math.round((x-38)*.17)+((x*5)%3==0?1:0)       // hairline: short left of the part, swept long to the right
+  R(x+hx,16+hh,1,Math.max(1,yb-16),H1);if(x>=38&&x%3==1)R(x+hx,yb-3+hh,1,3,H2)}   // strand shading near the tips
+ R(38+hx,5+hh,1,12,H3);R(39+hx,5+hh,1,3,H2)                                           // part line
+ for(const[x,y,l]of[[32,6,4],[35,4,4],[42,4,5],[46,3,5],[50,5,5],[54,4,5],[58,6,4],[62,9,3],[41,10,4],[48,11,4],[55,12,4]])for(let i=0;i<l;i++)R(x+hx+(i>>1),y+hh+i,1,1,H0)  // shine strands
+ for(const[x,y,l]of[[44,8,4],[52,9,4],[60,13,3],[36,10,4]])for(let i=0;i<l;i++)R(x+hx+(i>>1),y+hh+i,1,1,H2)  // depth strands
+ R(31+hx,8+hh,3,1,H2);R(63+hx,8+hh,3,1,H2)
+ // brows: height per side, optional slant (in = worried/sad, out = angry/determined)
+ for(const side of[0,1]){const h=side?s.browR:s.browL,bx=(side?51:34)+hx,sl=s.slant;const o1=sl=='in'?(side?1:-1)*0:0
+  const seg=side?[[0,3,sl=='in'?1:sl=='out'?-1:0],[3,4,0],[7,4,sl=='in'?-1:sl=='out'?1:0]]:[[0,4,sl=='in'?-1:sl=='out'?1:0],[4,4,0],[8,3,sl=='in'?1:sl=='out'?-1:0]]
+  for(const[off,w,dy]of seg)R(bx+off,23+hd-h+dy,w,2,K.hair[3])}
+ // glasses + eyes
+ const gy=26+hd
+ for(const gx of[33,50]){R(gx+hx,gy,13,11,K.frame);R(gx+1+hx,gy+1,11,9,K.lens);R(gx+1+hx,gy+1,11,1,'#b5e3fb')}
+ R(46+hx,gy+3,4,2,K.frame);R(32+hx,gy+3,1,2,K.frame);R(63+hx,gy+3,1,2,K.frame)
+ const arc=(gx)=>{R(gx+hx+1,gy+7,2,1,K.frame);R(gx+hx+3,gy+6,2,1,K.frame);R(gx+hx+5,gy+5,2,1,K.frame);R(gx+hx+7,gy+6,2,1,K.frame);R(gx+hx+9,gy+7,2,1,K.frame);R(gx+hx+3,gy+7,2,1,'#9fd4ee');R(gx+hx+7,gy+7,2,1,'#9fd4ee')}
+ const shut=(gx)=>{R(gx+hx,gy+6,11,1,K.frame);R(gx+hx+1,gy+7,9,1,'#9fd4ee')}
+ const iris=(gx,dx,dy,sm)=>{const ex=gx+3+dx+hx,ey=gy+2+dy;if(sm){R(ex+1,ey+1,4,5,K.iris);R(ex+2,ey,2,1,K.iris);R(ex+2,ey+6,2,1,K.iris);R(ex+2,ey+2,1,1,'#fff')}else{R(ex,ey,6,7,K.iris);R(ex+1,ey-1,4,1,K.iris);R(ex+1,ey+7,4,1,K.iris);R(ex+1,ey+1,2,2,'#fff');R(ex+4,ey+4,1,1,'#7aa6ff')}}
+ const E=s.eyes
+ for(const[i,gx]of[34,51].entries()){
+  if(E=='closed'||(s.blink&&E!='happy'))shut(gx)
+  else if(E=='happy')arc(gx)
+  else if(E=='wink'&&i==1)arc(gx)
+  else if(E=='wide')iris(gx,s.lx,s.ly,1)
+  else if(E=='sparkle'){iris(gx,s.lx,s.ly);R(gx+hx+6,gy+3,2,2,'#fff');R(gx+hx+4,gy+7,1,1,'#fff')}
+  else if(E=='half'){iris(gx,s.lx,s.ly+1);R(gx+hx,gy+1,11,3,K.skin[2]);R(gx+hx,gy+4,11,1,K.frame)}
+  else if(E=='sad'){iris(gx,s.lx,s.ly+1);R(gx+hx+1,gy+1,11,1,'#b5e3fb')}
+  else if(E=='side')iris(gx,2,s.ly)
+  else iris(gx,s.lx,s.ly)}
+ R(36+hx,gy+2,2,1,K.glare);R(37+hx,gy+3,2,1,K.glare);R(53+hx,gy+2,2,1,K.glare);R(54+hx,gy+3,2,1,K.glare)
+ // nose, cheeks, mouth
+ R(47+hx,38+hd,3,2,K.skin[2]);R(47+hx,38+hd,1,1,K.skin[3])
+ 
+ const mx=48+hx,my=41+hd,M=s.mouth
+ if(M=='closed'){R(mx-4,my+1,9,1,K.mouth);R(mx-5,my,1,1,K.mouth);R(mx+5,my,1,1,K.mouth)}
+ else if(M=='smile'){R(mx-5,my,11,1,K.mouth);R(mx-4,my+1,9,1,K.mouth);R(mx-3,my+2,7,1,K.mouth);R(mx-2,my+1,5,1,K.teeth)}
+ else if(M=='small'){R(mx-3,my,7,3,K.mouth);R(mx-2,my+2,5,1,K.tongue)}
+ else if(M=='wide'){R(mx-5,my-1,11,5,K.mouth);R(mx-4,my-1,9,1,K.teeth);R(mx-3,my+2,7,2,K.tongue)}
+ else if(M=='round'){R(mx-2,my-1,5,5,K.mouth);R(mx-1,my+2,3,1,K.tongue)}
+ else if(M=='grin'){R(mx-6,my-1,13,2,K.mouth);R(mx-5,my+1,11,2,K.mouth);R(mx-4,my-1,9,1,K.teeth);R(mx-3,my+2,7,1,K.tongue)}
+ else if(M=='hmm'){R(mx-3,my+2,7,1,K.mouth);R(mx+4,my+1,2,1,K.mouth)}
+ else if(M=='frown'){R(mx-4,my+2,9,1,K.mouth);R(mx-5,my+3,1,1,K.mouth);R(mx+5,my+3,1,1,K.mouth)}
+ else if(M=='smirk'){R(mx-3,my+1,7,1,K.mouth);R(mx+4,my,2,1,K.mouth);R(mx+6,my-1,1,1,K.mouth)}
+ else if(M=='wavy'){R(mx-4,my+2,2,1,K.mouth);R(mx-2,my+1,2,1,K.mouth);R(mx,my+2,2,1,K.mouth);R(mx+2,my+1,2,1,K.mouth);R(mx+4,my+2,1,1,K.mouth)}
+ else if(M=='laugh'){R(mx-6,my-1,13,2,K.mouth);R(mx-5,my+1,11,2,K.mouth);R(mx-4,my+3,9,1,K.mouth);R(mx-5,my-1,11,1,K.teeth);R(mx-3,my+2,7,2,K.tongue)}
+ else if(M=='yawn'){rr(mx-3,my-2,7,8,3,K.mouth);R(mx-2,my+3,5,2,K.tongue)}
+ // ---- arms in front of the head (think / cheer overlap the face)
+ if(armsFront)drawArms()
+ drawExtras(s,fa,jb)
+}
+function drawExtras(s,fa,jb){
+ if(s.extra=='scribble'&&fa){const n=Math.floor((s.t*9)%14);for(let i=0;i<n;i++)R(fa.hx+8+i*2,fa.hy+3+Math.round(Math.sin(s.t*6+i)*2),2,2,K.accent)}
+ if(s.extra=='bulb'){const bx=76,by=0-jb+(s.t%1<.5?0:1);el(bx,by+7,6,6,K.bulb);R(bx-3,by+3,2,2,'#fff6c2');R(bx-3,by+12,7,3,K.metal);R(bx-2,by+15,5,1,K.bulbD)
+  if(s.t%.6<.3){sparkle(bx-10,by+3,2,K.spark);sparkle(bx+10,by+2,2,K.spark)}}
+ if(s.extra=='q'){glyph('?',74,0+(Math.floor(s.t*2)%2),'#e9ecf4')}
+ if(s.extra=='excl'){glyph('!',76,0+(Math.floor(s.t*3)%2),'#ffe066')}
+ if(s.extra=='sweat'){const y=14+Math.floor((s.t*3)%6);el(68,y,1,2,'#7fd3ff');R(68,y-3,1,1,'#7fd3ff')}
+ if(s.extra=='zzz'){const f=Math.floor(s.t*2)%3;for(let i=0;i<=f;i++){const z=3+i*2,x=72+i*6,y=12-i*7+(f==i?0:0);R(x,y,z,1,'#cfd6ff');for(let k=1;k<z-1;k++)R(x+z-1-k,y+k,1,1,'#cfd6ff');R(x,y+z-1,z,1,'#cfd6ff')}}
+ if(s.extra=='heart'){const y=2-Math.floor((s.t*3)%3);for(const[dx,dy]of[[0,0],[1,0],[3,0],[4,0],[0,1],[1,1],[2,1],[3,1],[4,1],[1,2],[2,2],[3,2],[2,3]])R(72+dx*2,y+dy*2,2,2,K.accent)}
+ if(s.extra=='anger'){const p=Math.floor(s.t*4)%2;R(68,6+p,2,2,'#ff4d4d');R(72,6+p,2,2,'#ff4d4d');R(70,8+p,2,2,'#ff4d4d');R(68,10+p,2,2,'#ff4d4d');R(72,10+p,2,2,'#ff4d4d')}
+ if(s.extra=='spark'){const f=Math.floor(s.t*6);for(const[x,y,d]of[[22,10,0],[80,8,1],[16,40,2],[88,34,3],[70,-2,4]]){const z=(f+d)%4;if(z<3)sparkle(x,y,1+(z==1?1:0),K.spark)}}
+}
+
+// ======== Ben: copied from the reference image, 25x42 big pixels (each 2x2), same poses/expressions/easing as Pip ========
+const BC={h:'#44322a',d:'#2a1d17',H:'#7a5a48',S:'#f9c297',s:'#eaa57a',n:'#e6a384',b:'#4b362a',B:'#3a281f',T:'#34343e',L:'#3b3b46',D:'#2b2b33',c:'#1c1c22',P:'#25252c',p:'#33333c',W:'#f6f6f6',w:'#8d8d94',A:'#f6b98d',a:'#e8a074',g:'#0f0d0f',e:'#fbd0a8',m:'#5a1018',t:'#ffffff'}
+const HAIR=[[0,6,8],[0,12,18],[1,5,20],[2,5,21],[3,4,23],[4,1,24],[5,0,24],[6,1,24],[7,2,23],[8,3,10],[8,19,23],[9,3,9],[9,20,23],[10,3,8],[10,21,23],[11,3,5],[11,22,23],[12,3,5],[12,22,23],[13,3,5],[13,22,23],[14,3,5],[14,22,23],[15,3,4],[16,3,4]]
+const BEARD=[[15,5,7,'b'],[15,19,21,'b'],[16,5,8,'b'],[16,18,21,'b'],[17,5,8,'b'],[17,17,21,'b'],[18,5,10,'b'],[18,16,21,'b'],[19,6,20,'b'],[20,8,18,'B']]
+function figureBen(s){
+ g.clearRect(0,0,W,H)
+ const U=(x,y,w,h,c)=>R(2*x,2*y,2*w,2*h,c)             // one Ben pixel = 2x2 grid pixels
+ const Q=(c,r,w,h,k)=>U(c+12,r,w,h,BC[k]||k)            // column/row coordinates of the 25x42 sprite
+ const uline=(x0,y0,x1,y1,t,c)=>{x0=Math.round(x0);y0=Math.round(y0);x1=Math.round(x1);y1=Math.round(y1);const dx=Math.abs(x1-x0),dy=-Math.abs(y1-y0),sx=x0<x1?1:-1,sy=y0<y1?1:-1;let e=dx+dy
+  for(;;){U(x0-(t>>1),y0-(t>>1),t,t,c);if(x0==x1&&y0==y1)break;const e2=2*e;if(e2>=dy){e+=dy;x0+=sx}if(e2<=dx){e+=dx;y0+=sy}}}
+ const jU=Math.round(s.jump/2),bt=Math.round(s.bob/2)-jU,hd=Math.round(s.headDy/2)-jU,hx=Math.round(s.tilt/2),hy=hd+(s.hairDy?1:0)
+ // ---- legs, white shoes
+ for(const[c0,c1]of[[9,12],[14,17]])Q(c0,32-jU,c1-c0+1,6,'P'),Q(c0,32-jU,1,6,'p')
+ Q(8,38-jU,5,1,'P');Q(13,38-jU,5,1,'P')
+ Q(7,39-jU,6,2,'W');Q(12,40-jU,2,1,'w');Q(11,40-jU,1,1,'W');Q(14,39-jU,6,2,'W');Q(14,40-jU,2,1,'w');Q(7,41-jU,5,1,'w');Q(15,41-jU,5,1,'w')
+ // ---- torso: charcoal tee
+ Q(9,23+bt,9,9,'T');Q(9,23+bt,9,3,'L');Q(9,28+bt,9,3,'D');Q(9,31+bt,9,1,'D');Q(12,22+bt,3,1,'c');Q(10,23+bt,7,1,'c')
+ Q(12,21+bt,3,2,'s')
+ // ---- arms: bare skin, short sleeves at the shoulder
+ let fa=null
+ const arm=(side,hand,eo,st)=>{
+  const sxp=side?59:37,syp=52+s.sh,cl=v=>Math.max(0,Math.min(1,v)),w=cl((hand[1]-syp-12)/6)*cl((18-Math.abs(hand[0]-sxp))/4)
+  const kf=2+1.4*w,kx=2+6*w,sh=[side?32:18,25+bt+Math.round(s.sh/2)],cv=p=>[sh[0]+(p[0]-sxp)/kx,sh[1]+(p[1]-syp)/kf]
+  const Hh=cv(hand),E=cv(eo)
+  const dx=Hh[0]-E[0],dy=Hh[1]-E[1],d=Math.hypot(dx,dy)||1,ux=dx/d,uy=dy/d,hX=Math.round(Hh[0]),hY=Math.round(Hh[1])
+  const A=BC.A,a=BC.a
+  uline(sh[0],sh[1],E[0],E[1],3,A);uline(E[0],E[1],Hh[0],Hh[1],3,A)
+  const sd=Math.abs(uy)>Math.abs(ux)?[side?1:-1,0]:[0,1];uline(sh[0]+sd[0],sh[1]+sd[1],E[0]+sd[0],E[1]+sd[1],1,a);uline(E[0]+sd[0],E[1]+sd[1],Hh[0]+sd[0],Hh[1]+sd[1],1,a)
+  const sl=side?30:17;U(sl,23+bt,4,4,BC.T);U(sl,23+bt,4,1,BC.L);U(sl,26+bt,4,1,BC.D)       // short sleeve
+  const ax=Math.abs(ux)>=Math.abs(uy),sx=ux>=0?1:-1,sy=uy>=0?1:-1
+  if(st=='open'||st=='flat'){ax?U(sx>0?hX-1:hX-2,hY-1,4,3,A):U(hX-1,sy>0?hY-1:hY-2,3,4,A)}
+  else{U(hX-1,hY-1,3,3,A);U(hX-1,hY+1,3,1,a)}
+  if(st=='point'){ax?U(sx>0?hX+2:hX-4,hY-1,2,1,A):U(hX,sy>0?hY+2:hY-3,1,2,A)}
+  if(st=='thumb')U(hX,hY-3,1,2,A)
+  if(st=='marker'){uline(hX+ux*2,hY+uy*2,hX+ux*7,hY+uy*7,1,K.accent);U(Math.round(hX+ux*7),Math.round(hY+uy*7),1,1,K.frame)}
+  return{hx:2*Hh[0],hy:2*Hh[1]}}
+ const drawArms=()=>{if(s.rear)arm(0,s.rear,s.rElbow,s.rStyle);if(s.front)fa=arm(1,s.front,s.fElbow,s.fStyle)}
+ if(!s.armsFront)drawArms()
+ // ---- neck, face
+ Q(12,20+bt,3,3,'S');Q(12,21+bt,3,1,'s')
+ Q(5+hx,8+hd,17,12,'S')
+ for(const[r,c0,c1,k]of BEARD)Q(c0+hx,r+hd,c1-c0+1,1,k)
+ Q(12+hx,15+hd,2,1,'n')
+ for(const[x,y]of[[7,16],[19,16],[9,18],[17,18],[10,19],[16,19],[12,20],[14,20]])Q(x+hx,y+hd,1,1,'B')
+ // ---- mouth (inside the beard)
+ const M=s.mouth,mq=(c,r,w,h,k)=>Q(c+hx,r+hd,w,h,k||'m')
+ if(M=='closed')mq(12,18,3,1,'B')
+ else if(M=='smile'){mq(11,17,1,1);mq(15,17,1,1);mq(12,17,3,1,'t');mq(11,18,5,1)}
+ else if(M=='small'){mq(12,17,3,2)}
+ else if(M=='wide'){mq(11,16,5,1);mq(11,17,1,1);mq(15,17,1,1);mq(12,17,3,1,'t');mq(11,18,5,1);mq(12,18,3,1,'#e0707a')}
+ else if(M=='round')mq(12,16,3,3)
+ else if(M=='grin'||M=='laugh'){mq(10,16,7,1);mq(10,17,1,1);mq(16,17,1,1);mq(11,17,5,1,'t');mq(10,18,7,1);mq(12,18,3,1,'#e0707a')}
+ else if(M=='frown'){mq(12,18,3,1,'B');mq(11,19,1,1,'B');mq(15,19,1,1,'B')}
+ else if(M=='smirk'){mq(12,18,3,1,'B');mq(15,17,1,1,'B')}
+ else if(M=='wavy'){mq(11,18,2,1,'B');mq(13,19,2,1,'B');mq(15,18,1,1,'B')}
+ else if(M=='yawn'){mq(12,16,3,4);mq(12,19,3,1,'#e0707a')}
+ else{mq(12,18,3,1,'B');mq(15,17,1,1,'B')}
+ // ---- dark sunglasses-style frames, two pale bars per lens
+ Q(7+hx,11+hd,5,3,'g');Q(13+hx,11+hd,5,3,'g');Q(12+hx,12+hd,1,1,'g');Q(6+hx,12+hd,1,1,'g');Q(18+hx,12+hd,1,1,'g')
+ const lx=Math.max(-1,Math.min(1,s.lx)),Ey=s.eyes
+ for(const[i,l]of[[0,7],[1,13]]){
+  const bars=(r0,h,dx)=>{Q(l+1+dx+hx,r0+hd,1,h,'e');Q(l+3+dx+hx,r0+hd,1,h,'e')}
+  if(Ey=='closed'||(s.blink&&Ey!='happy'))Q(l+1+hx,12+hd,3,1,'e')
+  else if(Ey=='happy'||(Ey=='wink'&&i==1)){Q(l+1+hx,12+hd,1,1,'e');Q(l+2+hx,11+hd,1,1,'e');Q(l+3+hx,12+hd,1,1,'e')}
+  else if(Ey=='half'||Ey=='sad')bars(12,2,lx)
+  else if(Ey=='side')bars(11,3,1)
+  else if(Ey=='sparkle'){bars(11,3,lx);Q(l+1+lx+hx,11+hd,1,1,'t')}
+  else bars(11,3,lx)}
+ // ---- messy hair over everything
+ const hh=hy
+ for(const[r,c0,c1]of HAIR)Q(c0+hx,r+hh,c1-c0+1,1,'h')
+ for(const[c,r]of[[10,8],[19,8],[9,9],[20,9],[8,10],[21,10]])Q(c+hx,r+hh,1,1,'d')
+ for(const[c,r]of[[9,3],[10,4],[14,2],[15,3],[18,4],[19,5],[20,6],[21,7]])Q(c+hx,r+hh,1,1,'H')
+ for(const[c,r,w]of[[4,5,2],[8,6,3],[13,5,3],[16,7,2],[2,6,2],[7,2,2]])Q(c+hx,r+hh,w,1,'d')
+ // ---- brows (over the forehead)
+ const bu=h=>h>0?-(h>2?2:1):0,sl=s.slant
+ for(const[side,c0,h]of[[0,7,s.browL],[1,13,s.browR]]){const y=10+hd+bu(h),k=sl=='in'?[1,0,-1]:sl=='out'?[-1,0,1]:[0,0,0];(side?k.slice().reverse():k).forEach((o,i)=>Q(c0+1+i+hx,y+o-0*hd,1,1,'#2a1d17'))}
+ if(s.armsFront)drawArms()
+ drawExtras(s,fa,s.jump)
+}
+function render(s,flip){
+ figure(s)
+ o.clearRect(0,0,W,H)
+ k2.clearRect(0,0,W,H);k2.globalCompositeOperation='source-over';k2.drawImage(spr,0,0);k2.globalCompositeOperation='source-in';k2.fillStyle='#fff';k2.fillRect(0,0,W,H)
+ if(CHAR=='beard'){ // black outline one big pixel thick, then the white sticker ring outside it
+  bk.globalCompositeOperation='source-over';bk.clearRect(0,0,W,H);bk.drawImage(spr,0,0);bk.globalCompositeOperation='source-in';bk.fillStyle='#120d0d';bk.fillRect(0,0,W,H);bk.globalCompositeOperation='source-over'
+  bu.clearRect(0,0,W,H);for(const[dx,dy]of[[-2,0],[2,0],[0,-2],[0,2],[-2,-2],[2,2],[-2,2],[2,-2],[-1,0],[1,0],[0,-1],[0,1]])bu.drawImage(blkS,dx,dy)
+  bu.drawImage(blkS,0,0)
+  k2.clearRect(0,0,W,H);k2.globalCompositeOperation='source-over';k2.drawImage(blkU,0,0);k2.globalCompositeOperation='source-in';k2.fillStyle='#fff';k2.fillRect(0,0,W,H);k2.globalCompositeOperation='source-over'
+ }
+ for(const[dx,dy]of[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,1],[-1,1],[1,-1]])o.drawImage(sil,dx,dy)
+ const sh=Math.max(10,28-s.jump*2);o.fillStyle='#0006';o.fillRect(OX+48-(sh>>1),OY+85,sh,1);o.fillStyle='#0003';o.fillRect(OX+48-(sh>>1)-2,OY+86,sh+4,1)
+ if(CHAR=='beard')o.drawImage(blkU,0,0)
+ o.drawImage(spr,0,0)
+ c.clearRect(0,0,cv.width,cv.height);c.save();if(flip){c.translate(cv.width,0);c.scale(-1,1)}c.drawImage(out,0,0,W*S,H*S);c.restore()}
+
+// ---- actions: where the hands go, plus a default face ----
+const E=Math.round,sin=Math.sin
+const D=o=>({rear:[32,73],front:[64,73],fStyle:'relaxed',rStyle:'relaxed',eyes:'open',brow:0,slant:0,mouth:'smile',...o})
+// shoulders are at (37,52) rear and (59,52) front; each arm is 11+11 long, so a target ~21 away gives a straight arm
+// and anything closer needs an explicit elbow (fElbow / rElbow) or it bows out like a wing.
+const POSES={
+ idle:t=>D({rear:[32,73+E(sin(t*1.8))],front:[64,73+E(sin(t*1.8+1))]}),
+ point:t=>D({front:[80+E(sin(t*5)),50+E(sin(t*2.5))],fStyle:'point'}),
+ 'point left':t=>({...POSES.point(t),flip:1}),
+ 'point up':t=>D({front:[73+E(sin(t*5)),33],fStyle:'point',brow:1,extra:'q'}),
+ 'point down':t=>D({front:[64,74],fStyle:'point',look:[0,1],brow:1}),
+ wave:t=>{const w=sin(t*10)*.55;return D({fElbow:[75,47],front:[75+E(12*sin(w)),47-E(12*Math.cos(w))],fStyle:'open',brow:1,mouth:'grin'})},
+ present:t=>D({front:[80,56+E(sin(t*3))],fStyle:'open',brow:1}),
+ explain:t=>D({front:[78+E(sin(t*3)*2),54+E(Math.cos(t*4)*2)],rear:[18+E(sin(t*3+1)*2),54+E(Math.cos(t*4+1)*2)],fStyle:'open',rStyle:'open',brow:1}),
+ think:t=>D({front:[58,45],fElbow:[61,62],rear:[55,63],rElbow:[42,68],armsFront:1,fStyle:'fist',rStyle:'fist',browL:1,browR:2,mouth:'hmm',look:[1,-1],extra:'q'}),
+ idea:t=>D({front:[74,32],fStyle:'point',brow:2,eyes:'sparkle',extra:'bulb'}),
+ cheer:t=>D({front:[75+E(sin(t*8)*1),32+E(sin(t*8)*2)],rear:[21-E(sin(t*8+1)*1),32+E(sin(t*8+1)*2)],rearBend:1,fStyle:'fist',rStyle:'fist',brow:2,eyes:'happy',mouth:'laugh',jump:1,extra:'spark'}),
+ 'thumbs up':t=>D({front:[78,43+E(sin(t*5))],fStyle:'thumb',eyes:'wink',mouth:'grin',brow:1}),
+ clap:t=>{const k=E(sin(t*14)*2);return D({front:[52+k,58],fElbow:[63,63],rear:[44-k,58],rElbow:[33,63],fStyle:'open',rStyle:'open',eyes:'happy',mouth:'grin',brow:1})},
+ shrug:t=>D({front:[79,56],fElbow:[69,65],rear:[17,56],rElbow:[27,65],fStyle:'open',rStyle:'open',sh:-2,browL:1,browR:2,slant:'in',mouth:'smirk',headDy:1}),
+ 'hands on hips':t=>D({front:[61,67],fElbow:[69,60],rear:[35,67],rElbow:[27,60],fStyle:'fist',rStyle:'fist',brow:1,mouth:'smirk'}),
+ listen:t=>D({front:[70,34],fStyle:'open',tilt:2,look:[1,0],brow:1,mouth:'closed'}),
+ write:t=>D({front:[79,41],fStyle:'marker',look:[1,0],brow:0,extra:'scribble'}),
+ oops:t=>D({front:[55,43],fElbow:[63,57],armsFront:1,fStyle:'open',eyes:'wide',mouth:'closed',extra:'sweat',browL:3,browR:3,slant:0}),
+ bow:t=>D({front:[50,60],fElbow:[62,64],rear:[46,60],rElbow:[34,64],armsFront:1,eyes:'closed',headDy:5,sh:1,mouth:'smile'}),
+ nod:t=>D({nod:1,brow:1,rear:[32,73+E(sin(t*1.8))],front:[64,73+E(sin(t*1.8+1))]}),
+ 'shake head':t=>D({shake:1,mouth:'closed',browL:1,browR:1,slant:'in'}),
+ laugh:t=>D({front:[56,62],fElbow:[65,64],rear:[40,62],rElbow:[31,64],eyes:'happy',mouth:'laugh',blush:1,bounce:1,brow:1}),
+ sleep:t=>D({eyes:'closed',mouth:'yawn',extra:'zzz',headDy:3,tilt:1}),
+ 'raise hand':t=>D({front:[66,31],frontBend:1,fStyle:'open',brow:2,mouth:'small'}),
+}
+// ---- expressions: face only, they override the action's default face ----
+const EXPR={
+ neutral:{eyes:'open',brow:0,mouth:'closed',slant:0},
+ happy:{eyes:'open',brow:1,mouth:'smile',slant:0},
+ excited:{eyes:'sparkle',brow:2,mouth:'grin',slant:0,extra:'spark'},
+ wink:{eyes:'wink',brow:1,mouth:'smirk',slant:0},
+ surprised:{eyes:'wide',brow:3,mouth:'round',slant:0,extra:'excl'},
+ confused:{eyes:'open',browL:3,browR:0,mouth:'wavy',slant:0,extra:'q',tilt:1},
+ worried:{eyes:'open',brow:1,mouth:'frown',slant:'in',extra:'sweat'},
+ sad:{eyes:'sad',brow:0,mouth:'frown',slant:'in',look:[0,1],headDy:2},
+ determined:{eyes:'open',brow:-1,mouth:'closed',slant:'out'},
+ annoyed:{eyes:'half',brow:-1,mouth:'frown',slant:'out',extra:'anger'},
+ sleepy:{eyes:'half',brow:0,mouth:'yawn',slant:0,extra:'zzz',headDy:2},
+ love:{eyes:'sparkle',brow:1,mouth:'smile',slant:0,blush:1,extra:'heart'},
+ smug:{eyes:'half',brow:1,mouth:'smirk',slant:0},
+ shy:{eyes:'side',brow:1,mouth:'small',slant:'in',blush:1},
+ laughing:{eyes:'happy',brow:1,mouth:'laugh',slant:0,blush:1},
+}
+const LIM={};let pose='idle',expr=null,talking=false,tour=false,t0=performance.now(),beat=-9,nextBlink=2,blinkAt=-9,look=[0,0],lookTo=[0,0],nextLook=3
+const poses=document.getElementById('poses'),exprs=document.getElementById('exprs')
+function mk(box,names,fn,label){const l=document.createElement('span');l.textContent=label;l.style.cssText='color:#8b93a7;font:600 12px system-ui;align-self:center;width:84px;text-align:right';box.append(l)
+ for(const k of names){const b=document.createElement('button');b.textContent=k;b.dataset.k=k;b.onclick=()=>{tour=false;fn(k)};box.append(b)}}
+mk(poses,Object.keys(POSES),k=>{stopSpeech();setPose(k)},'Actions')
+mk(exprs,['auto',...Object.keys(EXPR)],k=>setExpr(k=='auto'?null:k),'Expressions')
+const chars=document.getElementById('chars'),NAMES={pip:'Pip',beard:'Ben'}
+{const l=document.createElement('span');l.textContent='Mascot';l.style.cssText='color:#8b93a7;font:600 12px system-ui;align-self:center;width:84px;text-align:right';chars.append(l)
+ for(const k of Object.keys(CHARS)){const b=document.createElement('button');b.textContent=NAMES[k];b.dataset.c=k;b.onclick=()=>setChar(k);chars.append(b)}}
+function setChar(n){CHAR=n;Object.assign(K,ORIG,CHARS[n]);document.getElementById('ttl').textContent=NAMES[n]+', the pixel tutor';document.title=NAMES[n]+' the Pixel Tutor';for(const b of chars.querySelectorAll('button'))b.classList.toggle('on',b.dataset.c==n)}
+setChar('pip')
+function setPose(k){pose=k;sync()}
+function setExpr(k){expr=k;sync()}
+function sync(){for(const b of poses.querySelectorAll('button'))b.classList.toggle('on',b.dataset.k==pose);for(const b of exprs.querySelectorAll('button'))b.classList.toggle('on',(b.dataset.k=='auto'&&!expr)||b.dataset.k==expr);document.getElementById('tour').classList.toggle('on',tour)}
+const VIS=['wide','small','round','wide','closed','small','round','small']
+let last=0;function loop(now){requestAnimationFrame(loop);if(now-last<66)return;last=now   // ~15 fps: chunky, but smooth enough for secondary motion
+ const t=(now-t0)/1000,P=POSES[pose](t),X=expr?EXPR[expr]:null
+ if(t>nextBlink){blinkAt=t;nextBlink=t+2+Math.random()*3}
+ if(t>nextLook){lookTo=[Math.floor(Math.random()*3)-1,Math.floor(Math.random()*2)-1];nextLook=t+1.5+Math.random()*3}
+ look[0]+=(lookTo[0]-look[0])*.5;look[1]+=(lookTo[1]-look[1])*.5
+ // face = the action's default, then the chosen expression on top
+ const f={eyes:P.eyes,brow:P.brow,browL:P.browL,browR:P.browR,slant:P.slant,mouth:P.mouth,extra:P.extra,blush:P.blush,look:P.look,headDy:P.headDy||0,tilt:P.tilt||0}
+ if(X){if('brow' in X||'browL' in X){f.brow=X.brow;f.browL=X.browL;f.browR=X.browR}for(const k of['eyes','slant','mouth','extra','blush','look'])f[k]=X[k];f.headDy=X.headDy||P.headDy||0;f.tilt=X.tilt||P.tilt||0}
+ const since=t-beat,nod=talking&&since<.22?1:0
+ const lk=f.look||[Math.round(look[0]),Math.round(look[1])]
+ const jump=P.jump?Math.abs(Math.round(sin(t*8)*5)):0
+ const mouth=talking?(since<.16?VIS[Math.floor(t*14)%VIS.length]:(since<.3?'small':'closed')):f.mouth
+ const base=Math.floor(t*1.8)%2,bob=P.bounce?Math.round(Math.abs(sin(t*13))*2):base
+ // arms ease toward the pose's targets, elbows follow, so changes flow like a real limb instead of snapping
+ const sh0=P.sh||0,limbT=(sx,hand,eo,bend)=>{if(eo)return{hx:hand[0],hy:hand[1],ex:eo[0],ey:eo[1]};const q=ik(sx,52+sh0,hand[0],hand[1],11,11,bend);return{hx:q.hx,hy:q.hy,ex:q.ex,ey:q.ey}}
+ if(talking&&pose=='idle'){const env=Math.max(0,1-since/.28);P.front=[66,71-E(9*env)];P.fStyle=env>.15?'open':'relaxed';P.rear=[33,72-E(3*env)]}
+ const tf=limbT(59,P.front,P.fElbow,P.frontBend??1),tr=limbT(37,P.rear,P.rElbow,P.rearBend??-1)
+ for(const[k,tg]of[['f',tf],['r',tr]]){if(!LIM[k])LIM[k]={...tg};else for(const q in tg)LIM[k][q]+=(tg[q]-LIM[k][q])*.55}
+ const s={t,jump,bob,headDy:Math.floor(t*1.8+.5)%2+nod+f.headDy+(P.nod?Math.round(Math.abs(sin(t*6))*3):0),hairDy:Math.floor(t*1.8-.4)%2,
+  tilt:P.shake?Math.round(sin(t*10)*2):(f.tilt||(talking?(Math.floor(t*2)%2?1:0):0)),
+  blink:t-blinkAt<.14,eyes:f.eyes,browL:(talking&&since<.2?Math.max(f.browL??f.brow??0,1):(f.browL??f.brow??0)),browR:(talking&&since<.2?Math.max(f.browR??f.brow??0,1):(f.browR??f.brow??0)),
+  slant:f.slant,blush:f.blush,lx:lk[0],ly:lk[1],mouth,sh:P.sh||0,extra:f.extra,
+  rear:[LIM.r.hx,LIM.r.hy],front:[LIM.f.hx,LIM.f.hy],rElbow:[LIM.r.ex,LIM.r.ey],fElbow:[LIM.f.ex,LIM.f.ey],fStyle:P.fStyle,rStyle:P.rStyle,rearBend:P.rearBend,frontBend:P.frontBend,armsFront:P.armsFront}
+ 
+ render(s,P.flip)}
+requestAnimationFrame(loop)
+// ---- speech: typed bubble + browser voice; word boundaries drive the nods ----
+const bub=document.getElementById('bub');let typer,speechOk='speechSynthesis' in window
+function stopSpeech(){clearInterval(typer);talking=false;try{speechSynthesis.cancel()}catch(e){}}
+function say(text,opt,done){stopSpeech();talking=true;if(typeof opt=='string')setPose(opt);else if(opt){if(opt.act)setPose(opt.act);if('expr' in opt)setExpr(opt.expr)};let i=0;bub.textContent='';let finished=false
+ const end=()=>{if(finished)return;finished=true;clearInterval(typer);bub.textContent=text;talking=false;done&&done()}
+ const useVoice=document.getElementById('voice').checked&&speechOk
+ const ms=Math.max(28,Math.min(70,(text.length>0?2800/text.length:40)))
+ typer=setInterval(()=>{i++;bub.textContent=text.slice(0,i);if(!useVoice&&i%4==0)beat=(performance.now()-t0)/1000;if(i>=text.length){clearInterval(typer);if(!useVoice)setTimeout(end,500)}},ms)
+ if(useVoice){try{const u=new SpeechSynthesisUtterance(text);u.rate=1.02;u.onboundary=e=>{beat=(performance.now()-t0)/1000;if(e.charIndex!=null)bub.textContent=text.slice(0,Math.max(i,e.charIndex+e.charLength||0))};u.onend=end;u.onerror=end;speechSynthesis.speak(u)
+   setTimeout(()=>{if(!finished&&!speechSynthesis.speaking&&i>=text.length)end()},text.length*70+3000)}catch(e){speechOk=false}}}
+document.getElementById('speak').onclick=()=>{tour=false;sync();say(document.getElementById('txt').value.trim()||'Hello!','point')}
+const SCRIPT=[['Hi! I am Pip, your tutor for today.','wave'],['A model reads text in small pieces called tokens.','explain'],['Look over here: every piece gets its own number.','point'],['Hmm, but how does it pick the next one?','think'],['Oh! It scores every possible piece, then picks a likely one.','idea'],['You did it! That is how tokens work.','cheer']]
+document.getElementById('tour').onclick=async()=>{tour=!tour;sync();let i=0;while(tour){const[txt,p]=SCRIPT[i++%SCRIPT.length];await new Promise(r=>say(txt,p,r));await new Promise(r=>setTimeout(r,500))}}
+window.pip={say,mascot:setChar,act:setPose,express:setExpr,actions:Object.keys(POSES),expressions:Object.keys(EXPR)} // so other pages can drive him
+const q=new URLSearchParams(location.search);if(q.get('char')&&CHARS[q.get('char')])setChar(q.get('char'));if(q.get('pose')&&POSES[q.get('pose')])setPose(q.get('pose'));if(q.get('expr')&&EXPR[q.get('expr')])setExpr(q.get('expr'));if(q.get('talk'))talking=true
+sync()
+</script></body></html>
