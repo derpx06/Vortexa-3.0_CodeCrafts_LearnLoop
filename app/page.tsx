@@ -1310,7 +1310,7 @@ function HomePage() {
                             onCancelDelete={() => setPendingDeleteId(null)}
                             onClick={() => {
                               const run = runByStageId.get(classroom.id);
-                              router.push(run ? courseRunHref(run) : `/classroom/${classroom.id}`);
+                              router.push(run ? courseRunHref(run) : `/course/${classroom.id}`);
                             }}
                             overlay={
                               <>

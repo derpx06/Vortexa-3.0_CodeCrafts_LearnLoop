@@ -29,7 +29,7 @@ const initial = (name: string | null) => (name?.trim()[0] ?? '?').toUpperCase();
 /**
  * Courses other users have published, under the home page's Recent section.
  * Same divider header and grid as Recent; cards are read-only and carry the
- * author's name. Opening one goes to the classroom, which is read-only for a
+ * author's name. Opening one goes to the course hub; its classroom is read-only for a
  * non-owner.
  */
 export function PublicCoursesSection({ formatDate }: { formatDate: (ts: number) => string }) {
@@ -135,7 +135,7 @@ export function PublicCoursesSection({ formatDate }: { formatDate: (ts: number) 
                         slide={thumbnails[course.id]}
                         requestThumbnail={requestThumbnail}
                         formatDate={formatDate}
-                        onClick={() => router.push(`/classroom/${course.id}`)}
+                        onClick={() => router.push(`/course/${course.id}`)}
                       />
                     </motion.div>
                   ))}

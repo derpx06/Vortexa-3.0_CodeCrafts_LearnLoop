@@ -2397,5 +2397,49 @@
     "featureSync": "Save across devices",
     "secureNote": "End-to-end on your account.",
     "terms": "By continuing you agree to the terms of service."
+  },
+  "study": {
+    "backHome": "Home",
+    "backCourse": "Back to course",
+    "loadingCourse": "Loading course...",
+    "notFound": "This course does not exist or is not shared with you.",
+    "loadFailed": "Could not load this course.",
+    "generateFailed": "Could not prepare study material. Check the model configuration and try again.",
+    "retry": "Try again",
+    "chooseMode": "How do you want to study?",
+    "start": "Start",
+    "firstOpenHint": "Flashcards and the quiz are created by AI the first time you open them.",
+    "generating": "Preparing study material from the course...",
+    "modes": {
+      "slides": {
+        "title": "Slides",
+        "description": "The full classroom: {{n}} slides with narration and AI teachers."
+      },
+      "flashcards": {
+        "title": "Flashcards",
+        "description": "Flip through the key ideas and test your recall."
+      },
+      "quiz": {
+        "title": "Quiz",
+        "description": "Multiple-choice questions with instant feedback."
+      }
+    },
+    "cardOf": "Card {{n}} of {{total}}",
+    "question": "Question",
+    "answer": "Answer",
+    "flip": "Flip card",
+    "tapToFlip": "Click to reveal the answer",
+    "previous": "Previous",
+    "next": "Next",
+    "shuffle": "Shuffle",
+    "restart": "Restart",
+    "keyboardHint": "Space to flip, arrow keys to move",
+    "questionOf": "Question {{n}} of {{total}}",
+    "correct": "Correct!",
+    "incorrect": "Not quite.",
+    "seeResults": "See results",
+    "quizDone": "Quiz complete",
+    "scoreLine": "You got {{score}} of {{total}} right",
+    "tryAgain": "Try again"
   }
 }
