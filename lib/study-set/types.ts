@@ -35,3 +35,11 @@ export interface CourseOverview {
   firstSceneId?: string;
   hasStudySet: boolean;
 }
+
+/** One slide of a course, for the slide deck viewer. */
+export interface CourseSlide {
+  sceneId: string;
+  title: string;
+  /** The slide canvas (`@openmaic/dsl` `Slide`), as stored. */
+  canvas: Record<string, unknown>;
+}

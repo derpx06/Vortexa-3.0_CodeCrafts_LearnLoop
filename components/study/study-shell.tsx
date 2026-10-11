@@ -6,7 +6,7 @@ import { ArrowLeft, FileQuestion, Loader2 } from 'lucide-react';
 
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { renderQuizMathText } from '@/lib/quiz/math-text';
-import type { CourseOverview, StudySet } from '@/lib/study-set/types';
+import type { CourseOverview, CourseSlide, StudySet } from '@/lib/study-set/types';
 import { cn } from '@/lib/utils';
 
 /** Text with inline LaTeX, rendered the way the classroom quiz renders it. */
@@ -135,6 +135,12 @@ function useJson<T>(url: string, attempt: number): Loadable<T> {
 
 export function useCourseOverview(id: string) {
   return useJson<CourseOverview>(`/api/stages/${encodeURIComponent(id)}/overview`, 0);
+}
+
+export function useCourseSlides(id: string) {
+  const [attempt, setAttempt] = useState(0);
+  const state = useJson<CourseSlide[]>(`/api/stages/${encodeURIComponent(id)}/slides`, attempt);
+  return { state, retry: () => setAttempt((n) => n + 1) };
 }
 
 export function useStudySet(id: string) {

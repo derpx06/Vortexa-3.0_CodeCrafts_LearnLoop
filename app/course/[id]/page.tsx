@@ -3,7 +3,14 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { motion } from 'motion/react';
-import { ArrowRight, Layers, ListChecks, Presentation, type LucideIcon } from 'lucide-react';
+import {
+  ArrowRight,
+  GraduationCap,
+  Layers,
+  ListChecks,
+  Presentation,
+  type LucideIcon,
+} from 'lucide-react';
 
 import {
   StudyError,
@@ -15,7 +22,7 @@ import { useI18n } from '@/lib/hooks/use-i18n';
 import { cn } from '@/lib/utils';
 
 interface ModeCard {
-  key: 'slides' | 'flashcards' | 'quiz';
+  key: 'course' | 'slides' | 'flashcards' | 'quiz';
   href: string;
   icon: LucideIcon;
   accent: string;
@@ -23,7 +30,8 @@ interface ModeCard {
 
 /**
  * The course hub: opening a course lands here, and the learner picks how to
- * study it — the narrated slide classroom, flashcards, or a quiz.
+ * study it — the full narrated classroom, the slides on their own,
+ * flashcards, or a quiz.
  */
 export default function CourseHubPage() {
   const { id } = useParams<{ id: string }>();
@@ -33,8 +41,14 @@ export default function CourseHubPage() {
 
   const modes: ModeCard[] = [
     {
-      key: 'slides',
+      key: 'course',
       href: `/classroom/${encodeURIComponent(id)}`,
+      icon: GraduationCap,
+      accent: 'from-amber-500 to-orange-500',
+    },
+    {
+      key: 'slides',
+      href: `${base}/slides`,
       icon: Presentation,
       accent: 'from-blue-500 to-indigo-500',
     },
@@ -72,7 +86,7 @@ export default function CourseHubPage() {
       title={course.name}
       subtitle={course.description || t('study.chooseMode')}
     >
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         {modes.map((mode, i) => {
           const Icon = mode.icon;
           return (
@@ -98,9 +112,11 @@ export default function CourseHubPage() {
                   {t(`study.modes.${mode.key}.title`)}
                 </h2>
                 <p className="mt-1 flex-1 text-sm text-muted-foreground">
-                  {mode.key === 'slides'
-                    ? t('study.modes.slides.description', { n: course.slideCount })
-                    : t(`study.modes.${mode.key}.description`)}
+                  {mode.key === 'course'
+                    ? t('study.modes.course.description', { n: course.sceneCount })
+                    : mode.key === 'slides'
+                      ? t('study.modes.slides.description', { n: course.slideCount })
+                      : t(`study.modes.${mode.key}.description`)}
                 </p>
                 <span className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-violet-600 dark:text-violet-400">
                   {t('study.start')}

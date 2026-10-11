@@ -2411,9 +2411,13 @@
     "firstOpenHint": "Flashcards and the quiz are created by AI the first time you open them.",
     "generating": "Preparing study material from the course...",
     "modes": {
+      "course": {
+        "title": "Course",
+        "description": "The full classroom: {{n}} scenes with narration and AI teachers."
+      },
       "slides": {
         "title": "Slides",
-        "description": "The full classroom: {{n}} slides with narration and AI teachers."
+        "description": "Browse the {{n}} slides like a presentation."
       },
       "flashcards": {
         "title": "Flashcards",
@@ -2440,6 +2444,11 @@
     "seeResults": "See results",
     "quizDone": "Quiz complete",
     "scoreLine": "You got {{score}} of {{total}} right",
-    "tryAgain": "Try again"
+    "tryAgain": "Try again",
+    "slideOf": "Slide {{n}} of {{total}}",
+    "noSlides": "This course has no slides.",
+    "fullscreen": "Full screen",
+    "exitFullscreen": "Exit full screen",
+    "slidesKeyboardHint": "Arrow keys or click the slide to move, Home and End to jump"
   }
 }
