@@ -5,7 +5,7 @@ const p = await b.newPage({ viewport: { width: 1344, height: 612 * Math.ceil(nam
 const errs = []; p.on('pageerror', (e) => errs.push(String(e)))
 const tiles = []
 for (const k of names) {
-	await p.goto('file:///home/manas/Documents/vortexa/pixel-tutor/pip.html?pose=' + encodeURIComponent(k) + (k === 'talk' ? '&talk=1' : '') + (k.startsWith('e:') ? '' : ''))
+	await p.goto('file:///home/manas/Documents/vortexa/Vortexa-3.0_CodeCrafts_LearnLoop/pixel-tutor/pip.html?pose=' + encodeURIComponent(k) + (k === 'talk' ? '&talk=1' : '') + (k.startsWith('e:') ? '' : ''))
 	await p.waitForTimeout(900)
 	tiles.push(await p.evaluate(() => document.getElementById('cv').toDataURL()))
 }

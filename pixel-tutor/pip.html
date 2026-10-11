@@ -183,7 +183,7 @@ const HAIR=[[0,6,8],[0,12,18],[1,5,20],[2,5,21],[3,4,23],[4,1,24],[5,0,24],[6,1,
 const BEARD=[[15,5,7,'b'],[15,19,21,'b'],[16,5,8,'b'],[16,18,21,'b'],[17,5,8,'b'],[17,17,21,'b'],[18,5,10,'b'],[18,16,21,'b'],[19,6,20,'b'],[20,8,18,'B']]
 function figureBen(s){
  g.clearRect(0,0,W,H)
- const U=(x,y,w,h,c)=>R(2*x,2*y,2*w,2*h,c)             // one Ben pixel = 2x2 grid pixels
+ const U=(x,y,w,h,c)=>R(2*x,2*y-2,2*w,2*h,c)           // one Ben pixel = 2x2 grid pixels
  const Q=(c,r,w,h,k)=>U(c+12,r,w,h,BC[k]||k)            // column/row coordinates of the 25x42 sprite
  const uline=(x0,y0,x1,y1,t,c)=>{x0=Math.round(x0);y0=Math.round(y0);x1=Math.round(x1);y1=Math.round(y1);const dx=Math.abs(x1-x0),dy=-Math.abs(y1-y0),sx=x0<x1?1:-1,sy=y0<y1?1:-1;let e=dx+dy
   for(;;){U(x0-(t>>1),y0-(t>>1),t,t,c);if(x0==x1&&y0==y1)break;const e2=2*e;if(e2>=dy){e+=dy;x0+=sx}if(e2<=dx){e+=dx;y0+=sy}}}
@@ -199,7 +199,7 @@ function figureBen(s){
  let fa=null
  const arm=(side,hand,eo,st)=>{
   const sxp=side?59:37,syp=52+s.sh,cl=v=>Math.max(0,Math.min(1,v)),w=cl((hand[1]-syp-12)/6)*cl((18-Math.abs(hand[0]-sxp))/4)
-  const kf=2+1.4*w,kx=2+6*w,sh=[side?32:18,25+bt+Math.round(s.sh/2)],cv=p=>[sh[0]+(p[0]-sxp)/kx,sh[1]+(p[1]-syp)/kf]
+  const kf=2+.8*w,kx=2+6*w,sh=[side?32:18,25+bt+Math.round(s.sh/2)],cv=p=>[sh[0]+(p[0]-sxp)/kx,sh[1]+(p[1]-syp)/kf]
   const Hh=cv(hand),E=cv(eo)
   const dx=Hh[0]-E[0],dy=Hh[1]-E[1],d=Math.hypot(dx,dy)||1,ux=dx/d,uy=dy/d,hX=Math.round(Hh[0]),hY=Math.round(Hh[1])
   const A=BC.A,a=BC.a
