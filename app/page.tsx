@@ -27,9 +27,12 @@ import {
   X,
   Presentation,
   Loader2,
+  Globe,
+  Lock,
 } from 'lucide-react';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { LanguageSwitcher } from '@/components/language-switcher';
+import { AccountMenu } from '@/components/auth/account-menu';
 import { createLogger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
 import { InputGroup, InputGroupInput, InputGroupButton } from '@/components/ui/input-group';
@@ -83,8 +86,11 @@ import {
   setStageFolder,
   FolderNameError,
   LIBRARY_CHANGED_EVENT,
+  listMyPublicStageIds,
+  setStagePublic,
   type DeleteFolderMode,
 } from '@/lib/utils/stage-storage';
+import { PublicCoursesSection } from '@/components/discovery/public-courses-section';
 import type { FolderRecord } from '@/lib/types/folder';
 import { displayNameWidth, FOLDER_NAME_MAX_WIDTH } from '@/lib/utils/folder-name-validation';
 import { FolderCard } from '@/components/discovery/folder-card';
@@ -233,6 +239,8 @@ function HomePage() {
   // the run is always started from a set that cannot change under it.
   const [preparingGenerate, setPreparingGenerate] = useState(false);
   const [classrooms, setClassrooms] = useState<StageListItem[]>([]);
+  // The caller's own courses that are published (drives each card's toggle).
+  const [myPublicIds, setMyPublicIds] = useState<Set<string>>(() => new Set());
   // First-slide thumbnails load lazily, per card near the viewport: the list
   // renders as soon as /api/stages answers, never behind every course's
   // document and media.
@@ -274,8 +282,12 @@ function HomePage() {
 
   const loadClassrooms = async () => {
     try {
-      const list = await listStages();
+      const [list, publicIds] = await Promise.all([
+        listStages(),
+        listMyPublicStageIds().catch(() => new Set<string>()),
+      ]);
       setClassrooms(list);
+      setMyPublicIds(publicIds);
       retainThumbnails(new Set(list.map((c) => c.id)));
     } catch (err) {
       log.error('Failed to load classrooms:', err);
@@ -353,6 +365,30 @@ function HomePage() {
       window.removeEventListener(LIBRARY_CHANGED_EVENT, onLibraryChanged);
     };
   }, []);
+
+  const handleTogglePublic = async (id: string) => {
+    const makePublic = !myPublicIds.has(id);
+    // Optimistic: flip the badge now, roll back if the server refuses.
+    setMyPublicIds((prev) => {
+      const next = new Set(prev);
+      if (makePublic) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+    try {
+      await setStagePublic(id, makePublic);
+      toast.success(t(makePublic ? 'classroom.published' : 'classroom.unpublished'));
+    } catch (err) {
+      log.error('Failed to change course visibility:', err);
+      setMyPublicIds((prev) => {
+        const next = new Set(prev);
+        if (makePublic) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+      toast.error(t('classroom.publishFailed'));
+    }
+  };
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -724,6 +760,10 @@ function HomePage() {
             </div>
           )}
         </div>
+
+        <div className="w-[1px] h-4 bg-gray-200 dark:bg-gray-700" />
+
+        <AccountMenu />
 
         <div className="w-[1px] h-4 bg-gray-200 dark:bg-gray-700" />
 
@@ -1274,6 +1314,11 @@ function HomePage() {
                             }}
                             overlay={
                               <>
+                                <PublishToggle
+                                  isPublic={myPublicIds.has(classroom.id)}
+                                  disabled={runByStageId.has(classroom.id)}
+                                  onToggle={() => void handleTogglePublic(classroom.id)}
+                                />
                                 <MoveToFolderMenu
                                   folders={folders}
                                   currentFolderId={classroom.folderId}
@@ -1300,6 +1345,8 @@ function HomePage() {
           )}
         </AnimatePresence>
       </div>
+
+      <PublicCoursesSection formatDate={formatDate} />
 
       {/* Folder dialogs — mounted at the top level so they are reachable even
           while the Recent section is collapsed or the course list is empty. */}
@@ -1618,6 +1665,64 @@ function pendingRunListItem(run: RunSnapshot): StageListItem {
     interactiveMode: run.input.interactive,
     taskEngineMode: run.input.taskEngine,
   };
+}
+
+/**
+ * Publish / unpublish a course from its card: a hover icon in the same row as
+ * delete, rename and move-to-folder, plus a persistent "Public" pill on the
+ * thumbnail while the course is published.
+ */
+function PublishToggle({
+  isPublic,
+  disabled,
+  onToggle,
+}: {
+  isPublic: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+}) {
+  const { t } = useI18n();
+  const label = disabled
+    ? t('classroom.publishAfterGeneration')
+    : t(isPublic ? 'classroom.unpublish' : 'classroom.publish');
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {/* aria-disabled, not disabled: a disabled button gets no pointer
+              events, so its tooltip could never explain why. */}
+          <button
+            type="button"
+            aria-label={label}
+            aria-disabled={disabled || undefined}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!disabled) onToggle();
+            }}
+            className={cn(
+              'absolute top-2 right-[7.25rem] size-7 inline-flex items-center justify-center rounded-full backdrop-blur-sm opacity-0 transition-opacity z-10 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 pointer-coarse:opacity-100 group-hover:opacity-100',
+              disabled
+                ? 'bg-black/20 text-white/50 cursor-not-allowed'
+                : isPublic
+                  ? 'bg-violet-600/80 hover:bg-violet-600 text-white'
+                  : 'bg-black/30 hover:bg-black/50 text-white hover:text-white',
+            )}
+          >
+            {isPublic ? <Lock className="size-3.5" /> : <Globe className="size-3.5" />}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          {label}
+        </TooltipContent>
+      </Tooltip>
+      {isPublic && (
+        <span className="absolute top-2 left-2 z-10 inline-flex items-center gap-1 rounded-md bg-violet-500/80 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm pointer-events-none">
+          <Globe className="size-2.5" />
+          {t('classroom.publicBadge')}
+        </span>
+      )}
+    </>
+  );
 }
 
 function ClassroomCard({

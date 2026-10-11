@@ -44,13 +44,48 @@ export async function middleware(request: NextRequest) {
     pathname,
   });
 
+  // Account sign-in is compulsory: without a session cookie, pages redirect to
+  // `/login` and API calls answer 401. Presence is checked here (Edge cannot
+  // reach the database); a stale cookie is caught by the account auth method
+  // and cleared by `GET /api/auth/session` on the next refresh.
+  const SESSION_COOKIE = 'learnloop_session';
+  const AUTH_OPEN = (p: string) =>
+    p === '/login' ||
+    p.startsWith('/login/') ||
+    p === '/signup' ||
+    p.startsWith('/signup/') ||
+    p === '/api/auth/session' ||
+    p.startsWith('/api/access-code/') ||
+    p === '/api/health' ||
+    // Next's own internals (dev HMR socket, font loader) must work signed out.
+    p.startsWith('/_next/') ||
+    p.startsWith('/__nextjs') ||
+    // Public static files served from `public/` carry an extension; let them
+    // through so the sign-in page can load its own logo and other assets.
+    /\.[a-z0-9]+$/i.test(p);
+  if (!request.cookies.get(SESSION_COOKIE)?.value && !AUTH_OPEN(pathname)) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json(
+        { success: false, errorCode: 'INVALID_CREDENTIAL', error: 'Sign-in required' },
+        { status: 401 },
+      );
+    }
+    const loginUrl = new URL('/login', request.url);
+    loginUrl.searchParams.set('next', pathname + request.nextUrl.search);
+    return NextResponse.redirect(loginUrl);
+  }
+
   const accessCode = process.env.ACCESS_CODE;
   if (!accessCode) {
     return next(request, identity);
   }
 
-  // Whitelist: access-code endpoints, health check
-  if (pathname.startsWith('/api/access-code/') || pathname === '/api/health') {
+  // Whitelist: access-code endpoints, health check, auth surfaces
+  if (
+    pathname.startsWith('/api/access-code/') ||
+    pathname === '/api/health' ||
+    AUTH_OPEN(pathname)
+  ) {
     return next(request, identity);
   }
 

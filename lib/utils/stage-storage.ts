@@ -1237,3 +1237,43 @@ export async function setStageFolder(stageId: string, folderId: string | undefin
   }
   log.info(`Set stage ${stageId} folder -> ${folderId ?? '(unfiled)'}`);
 }
+
+/** A course another user has published, as `GET /api/stages/public` lists it. */
+export interface PublicStageItem {
+  id: string;
+  name: string;
+  description?: string;
+  sceneCount: number;
+  createdAt: number;
+  updatedAt: number;
+  publishedAt: number | null;
+  /** The creator's display name; null when the account no longer exists. */
+  authorName: string | null;
+}
+
+/** Courses other users have made public, newest published first. */
+export async function listPublicStages(): Promise<PublicStageItem[]> {
+  const res = await fetch('/api/stages/public', { credentials: 'include' });
+  if (!res.ok) throw new Error(`Failed to list public stages: HTTP ${res.status}`);
+  const body = (await res.json().catch(() => null)) as { courses?: PublicStageItem[] } | null;
+  return Array.isArray(body?.courses) ? body.courses : [];
+}
+
+/** Ids of the caller's own courses that are currently public. */
+export async function listMyPublicStageIds(): Promise<Set<string>> {
+  const res = await fetch('/api/stages/visibility', { credentials: 'include' });
+  if (!res.ok) throw new Error(`Failed to read course visibility: HTTP ${res.status}`);
+  const body = (await res.json().catch(() => null)) as { publicIds?: string[] } | null;
+  return new Set(Array.isArray(body?.publicIds) ? body.publicIds : []);
+}
+
+/** Publish or unpublish one of the caller's courses. */
+export async function setStagePublic(stageId: string, isPublic: boolean): Promise<void> {
+  const res = await fetch(
+    `/api/stages/${encodeURIComponent(stageId)}/${isPublic ? 'publish' : 'unpublish'}`,
+    { method: 'POST', credentials: 'include' },
+  );
+  if (!res.ok)
+    throw new Error(`Failed to ${isPublic ? 'publish' : 'unpublish'}: HTTP ${res.status}`);
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(LIBRARY_CHANGED_EVENT));
+}

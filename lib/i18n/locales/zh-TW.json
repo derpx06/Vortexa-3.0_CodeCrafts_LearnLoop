@@ -1099,7 +1099,18 @@
     "runOutlining": "正在生成大綱…",
     "runAwaitingConfirmation": "等待確認",
     "runGenerating": "生成中 {{completed}}/{{total}}",
-    "runPaused": "已暫停"
+    "runPaused": "已暫停",
+    "publicClassrooms": "Public classrooms",
+    "publicEmpty": "No public classrooms yet. Publish one of yours to share it here.",
+    "byAuthor": "by {{name}}",
+    "unknownAuthor": "Unknown",
+    "publish": "Make public",
+    "unpublish": "Make private",
+    "published": "Published — everyone can now see this classroom",
+    "unpublished": "Made private",
+    "publishFailed": "Could not change the classroom's visibility",
+    "publicBadge": "Public",
+    "publishAfterGeneration": "You can publish once generation finishes"
   },
   "upload": {
     "pdfSizeLimit": "支援最大50MB的PDF檔案",
@@ -2353,5 +2364,38 @@
         "materialExtraction": null
       }
     }
+  },
+  "auth": {
+    "login": "Log in",
+    "signup": "Sign up",
+    "logout": "Log out",
+    "loginTitle": "Welcome back",
+    "loginDescription": "Log in to keep your classrooms across devices.",
+    "signupTitle": "Create your account",
+    "signupDescription": "Sign up to save your classrooms to your account.",
+    "name": "Name",
+    "email": "Email",
+    "password": "Password",
+    "passwordHint": "At least 8 characters.",
+    "submitLogin": "Log in",
+    "submitSignup": "Create account",
+    "submitting": "Please wait...",
+    "noAccount": "No account yet?",
+    "haveAccount": "Already have an account?",
+    "errors": {
+      "invalid": "Please check the highlighted fields.",
+      "emailTaken": "An account with this email already exists.",
+      "badCredentials": "Incorrect email or password.",
+      "rateLimited": "Too many attempts. Please try again later.",
+      "unavailable": "Sign-in is unavailable right now. Please try again."
+    },
+    "namePlaceholder": "Jane Doe",
+    "hidePassword": "Hide password",
+    "showPassword": "Show password",
+    "featureGenerate": "Generate from any PDF",
+    "featureAgents": "Multi-agent classrooms",
+    "featureSync": "Save across devices",
+    "secureNote": "End-to-end on your account.",
+    "terms": "By continuing you agree to the terms of service."
   }
 }

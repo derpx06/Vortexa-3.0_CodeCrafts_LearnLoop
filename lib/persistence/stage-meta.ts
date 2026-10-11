@@ -140,6 +140,14 @@ export const STAGE_META_MIGRATIONS: SchemaMigrationSet = {
   migrations: [
     { version: 1, name: 'baseline', up: STAGE_META_SCHEMA, transaction: false },
     { version: 2, name: 'adopt_legacy_document_owners', up: adoptLegacyDocumentOwnersOnce },
+    // Version 3: who created the course. `owner_id` can move (claims, merges);
+    // `created_by` is set once at creation and shown as the course's author.
+    {
+      version: 3,
+      name: 'created_by',
+      up: `ALTER TABLE stage_meta ADD COLUMN IF NOT EXISTS created_by TEXT;
+UPDATE stage_meta SET created_by = owner_id WHERE created_by IS NULL`,
+    },
   ],
 };
 
@@ -213,8 +221,8 @@ export async function claimStageMeta(
   ownerId: string,
 ): Promise<boolean> {
   const inserted = await queryable.query<{ owner_id: string } & Record<string, unknown>>(
-    `INSERT INTO stage_meta (stage_id, owner_id)
-     VALUES ($1, $2)
+    `INSERT INTO stage_meta (stage_id, owner_id, created_by)
+     VALUES ($1, $2, $2)
      ON CONFLICT (stage_id) DO NOTHING
      RETURNING owner_id`,
     [stageId, ownerId],

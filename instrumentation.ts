@@ -266,6 +266,25 @@ async function validateBootConfiguration(): Promise<void> {
   //
   // A registration that throws stops the process too, reported as a startup
   // failure with its stack (it is host code, not a setting).
+  // Account sign-in (email + password). Skipped when a fixed catch-all owner
+  // (shared team / single user) is configured, since that owner answers every
+  // request and would never let a session cookie be asked.
+  if (
+    process.env.DATABASE_URL?.trim() &&
+    !process.env.PERSISTENCE_SHARED_OWNER_ID?.trim() &&
+    process.env.OWNER_SINGLE_USER?.trim().toLowerCase() !== 'true' &&
+    process.env.OWNER_SINGLE_USER?.trim() !== '1'
+  ) {
+    const { configureOwnerAuthentication } = await import('@/lib/server/identity');
+    const { accountSessionAuthMethod } = await import('@/lib/server/auth/owner-method');
+    // `anonymousFallback: false` — the middleware now redirects every signed-out
+    // visitor to `/login`, so no request should ever reach a resolver without a
+    // session cookie; refuse rather than silently minting an anonymous owner.
+    configureOwnerAuthentication({
+      methods: [accountSessionAuthMethod],
+      anonymousFallback: false,
+    });
+  }
   const { validateOwnerIdentityConfiguration } = await import('@/lib/server/identity/registry');
   runConfigurationCheck(validateOwnerIdentityConfiguration);
 

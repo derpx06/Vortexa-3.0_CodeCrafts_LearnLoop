@@ -73,8 +73,11 @@ export async function decideDocumentAccess(
       return 'forbid';
     case 'read': {
       const meta = await readMeta(action.stageId);
-      if (!meta) return 'not-found';
-      return meta.deletedAt === null ? 'allow' : 'not-found';
+      if (!meta || meta.deletedAt !== null) return 'not-found';
+      // Private courses are visible to their owner only; a published course
+      // is readable by every signed-in user. Not-found rather than forbid, so
+      // an id does not reveal that a private course exists.
+      return meta.ownerId === ownerId || meta.isPublic ? 'allow' : 'not-found';
     }
     case 'write': {
       const meta = await readMeta(action.stageId);
